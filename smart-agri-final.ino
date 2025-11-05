@@ -8,7 +8,7 @@
 // ---------- Blynk Template & Auth ----------
 #define BLYNK_TEMPLATE_ID "TMPL3OFQJ3oEM"   // Replace with your Template ID
 #define BLYNK_TEMPLATE_NAME "SmartAgri"     // Replace with your Template Name
-#define BLYNK_AUTH_TOKEN "tfum7sY1H0cd-Tbp3fl4KD0y77EnAHeT"  // Device Auth Token
+#define BLYNK_AUTH_TOKEN "TOKEN"  // Device Auth Token
 
 // ---------- Libraries ----------
 #include <WiFi.h>
@@ -16,8 +16,8 @@
 #include "DHT.h"
 
 // ---------- Wi-Fi Credentials ----------
-char ssid[] = "MaYa";          
-char pass[] = "NibbaRNibbiC";  
+char ssid[] = "WIFI";          
+char pass[] = "WIFI Password";  
 
 // ---------- DHT11 ----------
 #define DHTPIN 15
