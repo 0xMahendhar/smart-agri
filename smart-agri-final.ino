@@ -33,7 +33,7 @@ const int soilWet = 1010;
 #define MQ2_PIN 32
 #define MQ135_PIN 33
 
-// ---------- Relay (Optional) ----------
+// ---------- Relay ----------
 #define RELAY_PIN 26
 
 // ---------- Blynk Virtual Pins ----------
@@ -47,6 +47,7 @@ const int soilWet = 1010;
 #define VPIN_MQ135_ALCOHOL V8
 #define VPIN_AQI V9
 #define VPIN_INTERVAL V10   // Slider for dynamic interval
+#define VPIN_PUMP V11       // Pump state ON/OFF
 
 BlynkTimer timer;
 int intervalSeconds = 900; // default 15 minutes
@@ -112,13 +113,35 @@ void sendToBlynk(DHTData dhtData, SoilData soilData, MQData mqData) {
   Blynk.virtualWrite(VPIN_AQI, mqData.aqi);
 }
 
+// ---------- Pump Control ----------
+void controlPump(SoilData soilData) {
+  int pumpState = 0; // 0 = OFF, 1 = ON
+
+  if (soilData.percent < 30) {
+    digitalWrite(RELAY_PIN, HIGH); // turn relay ON
+    pumpState = 1;
+  } else {
+    digitalWrite(RELAY_PIN, LOW);  // turn relay OFF
+    pumpState = 0;
+  }
+
+  if (Blynk.connected()) {
+    Blynk.virtualWrite(VPIN_PUMP, pumpState);
+  }
+
+  Serial.printf("💧 Pump State: %s\n", pumpState ? "ON" : "OFF");
+}
+
 // ---------- Sensor Task ----------
 void readAndSendSensors() {
   DHTData dhtData = readDHT();
   SoilData soilData = readSoil();
   MQData mqData = readMQSensors();
+
   sendToSerial(dhtData, soilData, mqData);
   sendToBlynk(dhtData, soilData, mqData);
+
+  controlPump(soilData); // control pump based on soil moisture
 }
 
 // ---------- Wi-Fi & Blynk Reconnect ----------
