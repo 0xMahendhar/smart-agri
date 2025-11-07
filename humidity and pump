@@ -1,0 +1,156 @@
+/************************************************************
+  🌾 SmartAgri ESP32
+  Sensors: Soil Moisture
+  Features: Pump Control, Blynk integration, 
+            Dynamic interval slider, Safe Wi-Fi & Blynk reconnect
+************************************************************/
+
+// ---------- Blynk Template & Auth ----------
+#define BLYNK_TEMPLATE_ID "TMPL3OFQJ3oEM"
+#define BLYNK_TEMPLATE_NAME "SmartAgri"
+#define BLYNK_AUTH_TOKEN "tfum7sY1H0cd-Tbp3fl4KD0y77EnAHeT"
+
+// ---------- Libraries ----------
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+
+// ---------- Wi-Fi Credentials ----------
+char ssid[] = "TEst";          
+char pass[] = "Password";  
+
+// ---------- Soil Moisture ----------
+#define SOIL_PIN 34
+const int soilDry = 2480;
+const int soilWet = 1010;
+
+// ---------- Relay ----------
+#define RELAY_PIN 26
+
+// ---------- Blynk Virtual Pins ----------
+#define VPIN_SOIL V3
+#define VPIN_COND V4
+#define VPIN_INTERVAL V10   // Slider for dynamic interval
+#define VPIN_PUMP V11       // Pump state ON/OFF
+
+BlynkTimer timer;
+int intervalSeconds = 900; // default 15 minutes
+int sensorTimerID;
+bool wifiConnecting = false;
+
+// ---------- Soil Sensor Function ----------
+struct SoilData { 
+  float percent; 
+  String condition; 
+};
+
+SoilData readSoil() {
+  SoilData data;
+  int soilRaw = analogRead(SOIL_PIN);
+  data.percent = map(soilRaw, soilDry, soilWet, 0, 100);
+  data.percent = constrain(data.percent, 0, 100);
+  data.condition = (data.percent < 30) ? "Dry" : (data.percent < 70) ? "Moist" : "Wet";
+  return data;
+}
+
+// ---------- Output Functions ----------
+void sendToSerial(SoilData soilData) {
+  Serial.printf("💧 Soil: %.1f%% (%s)\n", soilData.percent, soilData.condition.c_str());
+  Serial.println("==========x===========x========");
+}
+
+void sendToBlynk(SoilData soilData) {
+  if (!Blynk.connected()) return;
+  Blynk.virtualWrite(VPIN_SOIL, soilData.percent);
+  Blynk.virtualWrite(VPIN_COND, soilData.condition);
+}
+
+// ---------- Pump Control ----------
+void controlPump(SoilData soilData) {
+  int pumpState = 0;
+
+  if (soilData.percent < 30) {
+    digitalWrite(RELAY_PIN, HIGH); // turn relay ON
+    pumpState = 1;
+  } else {
+    digitalWrite(RELAY_PIN, LOW);  // turn relay OFF
+    pumpState = 0;
+  }
+
+  if (Blynk.connected()) {
+    Blynk.virtualWrite(VPIN_PUMP, pumpState);
+  }
+
+  Serial.printf("💦 Pump State: %s\n", pumpState ? "ON" : "OFF");
+}
+
+// ---------- Sensor Task ----------
+void readAndSendSensors() {
+  SoilData soilData = readSoil();
+  sendToSerial(soilData);
+  sendToBlynk(soilData);
+  controlPump(soilData);
+}
+
+// ---------- Wi-Fi & Blynk Reconnect ----------
+void checkConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!wifiConnecting) {
+      Serial.println("⚠️ Wi-Fi disconnected! Reconnecting...");
+      WiFi.begin(ssid, pass);
+      wifiConnecting = true;
+    }
+  } else {
+    if (wifiConnecting) {
+      Serial.println("✅ Wi-Fi reconnected");
+      wifiConnecting = false;
+    }
+    if (!Blynk.connected()) {
+      Serial.println("⚠️ Blynk disconnected! Reconnecting...");
+      if (!Blynk.connect(10000)) {
+        Serial.println("❌ Blynk reconnect failed, will retry...");
+      } else {
+        Serial.println("✅ Blynk reconnected successfully");
+      }
+    }
+  }
+}
+
+// ---------- Slider for Dynamic Interval ----------
+BLYNK_WRITE(VPIN_INTERVAL) {
+  int newInterval = param.asInt();
+  newInterval = constrain(newInterval, 5, 900); // 5 sec → 15 min
+  if (newInterval != intervalSeconds) {
+    intervalSeconds = newInterval;
+    timer.deleteTimer(sensorTimerID);
+    sensorTimerID = timer.setInterval(intervalSeconds * 1000L, readAndSendSensors);
+    Serial.printf("⏱️ Interval changed: %d sec\n", intervalSeconds);
+  }
+}
+
+// ---------- Setup ----------
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_PIN, OUTPUT);
+
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+  WiFi.begin(ssid, pass);
+
+  Blynk.config(BLYNK_AUTH_TOKEN);
+  Serial.println("🌾 SmartAgri Ready");
+
+  // Check Wi-Fi & Blynk every 30 sec
+  timer.setInterval(30000L, checkConnection);
+
+  // Sensor read + Blynk/Serial output
+  sensorTimerID = timer.setInterval(intervalSeconds * 1000L, readAndSendSensors);
+
+  // Sync slider with default interval
+  Blynk.virtualWrite(VPIN_INTERVAL, intervalSeconds);
+}
+
+// ---------- Loop ----------
+void loop() {
+  if (Blynk.connected()) Blynk.run();
+  timer.run();
+}
